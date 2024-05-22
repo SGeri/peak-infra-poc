@@ -6,11 +6,10 @@ import { api } from "./trpc";
 export default function Home() {
   const [messages, setMessages] = useState<string[]>([]);
 
-  const { mutate: createAccount, isSuccess: createAccountSuccess } =
-    api.createAccount.useMutation();
+  const createAccountMutation = api.createAccount.useMutation();
 
   api.onSuccessfulAccountCreation.useSubscription(undefined, {
-    enabled: createAccountSuccess,
+    enabled: createAccountMutation.isSuccess,
     onData(data) {
       console.log("Something came from the server:", data);
       if (data) {
@@ -28,7 +27,7 @@ export default function Home() {
   return (
     <div className="p-4 space-y-4">
       <button
-        onClick={() => createAccount()}
+        onClick={() => createAccountMutation.mutate()}
         className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
       >
         Create Account
