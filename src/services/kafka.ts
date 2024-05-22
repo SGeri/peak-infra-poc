@@ -1,3 +1,4 @@
+import { TOPIC_NAME } from "@/constants";
 import { Consumer, Kafka, Producer } from "kafkajs";
 
 export class KafkaService {
@@ -5,17 +6,35 @@ export class KafkaService {
   producer: Producer;
   consumer: Consumer;
 
+  // setup kafka, create topic if it doesn't exist
   constructor() {
     this.kafka = new Kafka({
       clientId: "my-app",
-      brokers: ["kafka1:9092", "kafka2:9092"],
+      brokers: ["localhost:9093"],
     });
 
-    this.producer = this.kafka.producer();
+    this.producer = this.kafka.producer({ allowAutoTopicCreation: true });
     this.consumer = this.kafka.consumer({ groupId: "test-group" });
+
+    this.kafka
+      .admin()
+      .connect()
+      .then(() =>
+        this.kafka.admin().createTopics({
+          topics: [{ topic: TOPIC_NAME }],
+        })
+      )
+      .then((topicCreated) => {
+        if (topicCreated) {
+          console.log(TOPIC_NAME + " was created");
+        }
+      })
+      .finally(() => {
+        this.kafka.admin().disconnect();
+      });
   }
 
-  public async createEvent(topic: string, message: string) {
+  public async createEvent(topic: string, message: any) {
     await this.producer.connect();
 
     await this.producer.send({
@@ -24,20 +43,6 @@ export class KafkaService {
     });
 
     await this.producer.disconnect();
-  }
-
-  public getConsumer() {
-    return this.consumer;
-
-    // await this.consumer.connect();
-    // await this.consumer.subscribe({ topic });
-    // await this.consumer.run({
-    //   eachMessage: async ({ topic, partition, message }) => {
-    //     console.log({
-    //       value: message?.value?.toString(),
-    //     });
-    //   },
-    // });
   }
 }
 

@@ -3,42 +3,49 @@ import { createCallerFactory, router, procedure } from "./trpc";
 import { pspGatewayService } from "@/services/psp-gateway";
 import { TRPCError } from "@trpc/server";
 import { kafkaService } from "@/services/kafka";
-
-type Test = string | undefined;
+import { TOPIC_NAME } from "@/constants";
+import { AccountCreationEvent } from "@/types";
 
 export const appRouter = router({
-  createCreateAccountEvent: procedure.mutation(async () => {
+  createAccount: procedure.mutation(async () => {
+    // create fake context
     const userId = "123";
-    const accountDetails = {};
+    const accountDetails = "456";
 
-    if (!pspGatewayService.checkUserAccountCreationAbility(userId))
+    // validations of the action are handled by the mutation
+    if (!pspGatewayService.canUserCreateAccount(userId))
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: "User account creation is not allowed",
+        message: "Account creation is not allowed for this user",
       });
 
-    // call kafka to create an event or directly call service that creates event
+    // request to create an account
     await pspGatewayService.createAccount(userId, accountDetails);
   }),
 
   onSuccessfulAccountCreation: procedure.subscription(async ({ ctx }) => {
-    const consumer = kafkaService.getConsumer();
-    await consumer.connect();
-    await consumer.subscribe({ topic: "topic" });
+    await kafkaService.consumer.connect();
+    await kafkaService.consumer.subscribe({ topic: TOPIC_NAME });
 
-    return observable<Test>((emit) => {
-      consumer.run({
-        eachMessage: async ({ topic, partition, message }) => {
-          console.log({
-            value: message?.value?.toString(),
-          });
-          emit.next(message?.value?.toString());
+    return observable<string | undefined>((emit) => {
+      kafkaService.consumer.run({
+        eachMessage: async ({ topic, message }) => {
+          console.log("Received message", { topic, message });
+          if (topic !== TOPIC_NAME || !message || !message.value) return;
+
+          const status = message.value.toString() as AccountCreationEvent;
+
+          emit.next(status);
+
+          if (status === AccountCreationEvent.SUCCESS) {
+            emit.complete();
+          }
         },
       });
 
       // unsubscribe function when client disconnects or stops subscribing
       return () => {
-        consumer.disconnect();
+        kafkaService.consumer.disconnect();
       };
     });
   }),
